@@ -20,7 +20,7 @@ function Git (repoDir) {
 Git.prototype = new EventEmitter;
 
 Git.prototype.listen = function () {
-    var server = http.createServer(this.handle);
+    var server = http.createServer(this.handle.bind(this));
     server.listen.apply(server, arguments);
     return server;
 };
@@ -63,7 +63,8 @@ Git.prototype.handle = function (req, res, next) {
     }
     
     var m;
-    if (req.method === 'GET' && (m = req.url.match('/([^\/]+)/info/refs'))) {
+    if (req.method === 'GET'
+    && (m = u.pathname.match(/\/([^\/]+)\/info\/refs$/))) {
         var repo = m[1];
         
         if (!params.service) {
@@ -100,7 +101,7 @@ Git.prototype.handle = function (req, res, next) {
         ps.stderr.pipe(process.stderr, { end : false });
     }
     else if (req.method === 'GET'
-    && (m = req.url.match(/^\/([^\/]+)\/HEAD$/))) {
+    && (m = u.pathname.match(/^\/([^\/]+)\/HEAD$/))) {
         var repo = m[1];
         var file = path.join(repoDir, repo, '.git', 'HEAD');
         path.exists(file, function (ex) {

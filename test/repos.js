@@ -13,6 +13,7 @@ test('create, push to, and clone a repo', function (t) {
     var repoDir = '/tmp/' + Math.floor(Math.random() * (1<<30)).toString(16);
     var srcDir = '/tmp/' + Math.floor(Math.random() * (1<<30)).toString(16);
     var dstDir = '/tmp/' + Math.floor(Math.random() * (1<<30)).toString(16);
+    
     fs.mkdirSync(repoDir, 0700);
     fs.mkdirSync(srcDir, 0700);
     fs.mkdirSync(dstDir, 0700);
