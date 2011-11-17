@@ -33,7 +33,6 @@ http.createServer(function (req, res) {
         }
         
         var service = params.service.replace(/^git-/, '');
-        
         if (config.services.indexOf(service) < 0) {
             res.statusCode = 405;
             res.end('service not available');
@@ -60,20 +59,44 @@ http.createServer(function (req, res) {
         ps.stdout.pipe(res);
         ps.stderr.pipe(process.stderr, { end : false });
     }
-    else if (req.method === 'GET' && req.url === '/bouncy/HEAD') {
-        fs.createReadStream(__dirname + '/bouncy_repo/.git/HEAD').pipe(res);
+    else if (req.method === 'GET'
+    && (m = req.url.match(/^\/([^\/]+)\/HEAD$/))) {
+        var repo = m[1];
+        var file = path.join(config.repos, repo, '.git', 'HEAD');
+        path.exists(file, function (ex) {
+            if (ex) fs.createReadStream(file).pipe(res)
+            else {
+                res.statusCode = 404;
+                res.end('not found');
+            }
+        });
     }
-    else if (req.method === 'POST' && req.url === '/bouncy/git-receive-pack') {
-        res.setHeader('content-type', 'application/x-git-receive-pack-result');
+    else if (req.method === 'POST'
+    && (m = req.url.match(/\/([^\/]+)\/git-(.+)/))) {
+        var repo = m[1], service = m[2];
+        
+        if (config.services.indexOf(service) < 0) {
+            res.statusCode = 405;
+            res.end('service not available');
+            return;
+        }
+        
+        res.setHeader('content-type',
+            'application/x-git-' + service + '-result'
+        );
         noCache();
         
-        var ps = spawn('git-receive-pack', [
+        var ps = spawn('git-' + service, [
             '--stateless-rpc',
-            'bouncy_repo',
+            path.join(config.repo, repo),
         ]);
         ps.stdout.pipe(res);
         req.pipe(ps.stdin);
         ps.stderr.pipe(process.stderr, { end : false });
+    }
+    else if (req.method !== 'GET' && req.method !== 'POST') {
+        res.statusCode = 405;
+        res.end('method not supported');
     }
     else {
         res.statusCode = 404;
