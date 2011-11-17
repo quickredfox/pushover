@@ -1,16 +1,41 @@
-var http = require('http');
 var fs = require('fs');
 var url = require('url');
-var qs = require('qs');
+var qs = require('querystring');
 var path = require('path');
 var spawn = require('child_process').spawn;
+var seq = require('seq');
 
-var config = {
-    repos : __dirname + '/repos',
-    services : [ 'upload-pack', 'receive-pack' ]
+module.exports = function (repoDir) {
+    var self = handler.bind(null, repoDir);
+    
+    self.list = function (cb) {
+        fs.readdir(repoDir, cb);
+    };
+    
+    self.exists = function (repo, cb) {
+        path.exists(path.join(repoDir, repo), cb);
+    };
+    
+    self.create = function (repo, cb) {
+        var ps = spawn('git', [ 'init', '--bare', path.join(repoDir, repo) ]);
+        var err = '';
+        ps.stderr.on('data', function (buf) { err += buf });
+        
+        ps.on('exit', function (code) {
+            if (!cb) {}
+            else if (code) cb(err || true)
+            else cb(null)
+        });
+    };
+    
+    self.handle = self;
+    
+    return self;
 };
 
-http.createServer(function (req, res) {
+var services = [ 'upload-pack', 'receive-pack' ]
+
+function handler (repoDir, req, res, next) {
     var u = url.parse(req.url);
     var params = qs.parse(u.query);
     
@@ -19,8 +44,6 @@ http.createServer(function (req, res) {
         res.setHeader('pragma', 'no-cache');
         res.setHeader('cache-control', 'no-cache, max-age=0, must-revalidate');
     }
-    
-    console.dir(req.method + ' ' + req.url);
     
     var m;
     if (req.method === 'GET' && (m = req.url.match('/([^\/]+)/info/refs'))) {
@@ -33,7 +56,7 @@ http.createServer(function (req, res) {
         }
         
         var service = params.service.replace(/^git-/, '');
-        if (config.services.indexOf(service) < 0) {
+        if (services.indexOf(service) < 0) {
             res.statusCode = 405;
             res.end('service not available');
             return;
@@ -54,7 +77,7 @@ http.createServer(function (req, res) {
         var ps = spawn('git-' + service, [
             '--stateless-rpc',
             '--advertise-refs',
-            path.join(config.repos, repo),
+            path.join(repoDir, repo),
         ]);
         ps.stdout.pipe(res);
         ps.stderr.pipe(process.stderr, { end : false });
@@ -62,7 +85,7 @@ http.createServer(function (req, res) {
     else if (req.method === 'GET'
     && (m = req.url.match(/^\/([^\/]+)\/HEAD$/))) {
         var repo = m[1];
-        var file = path.join(config.repos, repo, '.git', 'HEAD');
+        var file = path.join(repoDir, repo, '.git', 'HEAD');
         path.exists(file, function (ex) {
             if (ex) fs.createReadStream(file).pipe(res)
             else {
@@ -75,7 +98,7 @@ http.createServer(function (req, res) {
     && (m = req.url.match(/\/([^\/]+)\/git-(.+)/))) {
         var repo = m[1], service = m[2];
         
-        if (config.services.indexOf(service) < 0) {
+        if (services.indexOf(service) < 0) {
             res.statusCode = 405;
             res.end('service not available');
             return;
@@ -88,11 +111,14 @@ http.createServer(function (req, res) {
         
         var ps = spawn('git-' + service, [
             '--stateless-rpc',
-            path.join(config.repo, repo),
+            path.join(repoDir, repo),
         ]);
         ps.stdout.pipe(res);
         req.pipe(ps.stdin);
         ps.stderr.pipe(process.stderr, { end : false });
+    }
+    else if (typeof next === 'function') {
+        next();
     }
     else if (req.method !== 'GET' && req.method !== 'POST') {
         res.statusCode = 405;
@@ -102,4 +128,4 @@ http.createServer(function (req, res) {
         res.statusCode = 404;
         res.end('not found');
     }
-}).listen(7000);
+}
