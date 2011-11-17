@@ -2,40 +2,57 @@ var fs = require('fs');
 var url = require('url');
 var qs = require('querystring');
 var path = require('path');
+var http = require('http');
+
 var spawn = require('child_process').spawn;
+var EventEmitter = require('events').EventEmitter;
+
 var seq = require('seq');
 
 module.exports = function (repoDir) {
-    var self = handler.bind(null, repoDir);
+    return new Git(repoDir);
+};
+
+function Git (repoDir) {
+    this.repoDir = repoDir;
+}
+
+Git.prototype = new EventEmitter;
+
+Git.prototype.listen = function () {
+    var server = http.createServer(this.handle);
+    server.listen.apply(server, arguments);
+    return server;
+};
+
+Git.prototype.list = function (cb) {
+    fs.readdir(this.repoDir, cb);
+};
+
+Git.prototype.exists = function (repo, cb) {
+    path.exists(path.join(this.repoDir, repo), cb);
+};
+
+Git.prototype.create = function (repo, cb) {
+    var cwd = process.cwd();
+    var dir = path.join(this.repoDir, repo);
+    var ps = spawn('git', [ 'init', '--bare', dir ]);
     
-    self.list = function (cb) {
-        fs.readdir(repoDir, cb);
-    };
+    var err = '';
+    ps.stderr.on('data', function (buf) { err += buf });
     
-    self.exists = function (repo, cb) {
-        path.exists(path.join(repoDir, repo), cb);
-    };
-    
-    self.create = function (repo, cb) {
-        var ps = spawn('git', [ 'init', '--bare', path.join(repoDir, repo) ]);
-        var err = '';
-        ps.stderr.on('data', function (buf) { err += buf });
-        
-        ps.on('exit', function (code) {
-            if (!cb) {}
-            else if (code) cb(err || true)
-            else cb(null)
-        });
-    };
-    
-    self.handle = self;
-    
-    return self;
+    ps.on('exit', function (code) {
+        if (!cb) {}
+        else if (code) cb(err || true)
+        else cb(null)
+    });
 };
 
 var services = [ 'upload-pack', 'receive-pack' ]
 
-function handler (repoDir, req, res, next) {
+Git.prototype.handle = function (req, res, next) {
+    var self = this;
+    var repoDir = self.repoDir;
     var u = url.parse(req.url);
     var params = qs.parse(u.query);
     
@@ -114,6 +131,12 @@ function handler (repoDir, req, res, next) {
             path.join(repoDir, repo),
         ]);
         ps.stdout.pipe(res);
+        ps.on('exit', function (code) {
+            if (service === 'receive-pack') {
+                self.emit('push', repo);
+            }
+        });
+        
         req.pipe(ps.stdin);
         ps.stderr.pipe(process.stderr, { end : false });
     }
@@ -128,4 +151,4 @@ function handler (repoDir, req, res, next) {
         res.statusCode = 404;
         res.end('not found');
     }
-}
+};
