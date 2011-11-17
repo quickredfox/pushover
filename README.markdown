@@ -61,6 +61,9 @@ var repos = pushover(repoDir)
 Create a new repository collection from the directory `repoDir`.
 `repoDir` should be entirely empty except for git repo directories.
 
+`repos` is an EventEmitter. Right now it only emits "push" events with the repo
+name as the only argument.
+
 repos.handle(req, res, next)
 ----------------------------
 
