@@ -1,7 +1,7 @@
 pushover
 ========
 
-Serve up git repositories over http.
+Serve up git repositories over http and accept git pushes.
 
 This library makes it super useful to set up custom git push deploy logic.
 
