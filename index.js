@@ -9,12 +9,14 @@ var EventEmitter = require('events').EventEmitter;
 
 var seq = require('seq');
 
-module.exports = function (repoDir) {
-    return new Git(repoDir);
+module.exports = function (repoDir, opts) {
+    if (!opts) opts = {};
+    return new Git(repoDir, opts);
 };
 
-function Git (repoDir) {
+function Git (repoDir, opts) {
     this.repoDir = repoDir;
+    this.autoCreate = opts.autoCreate === false ? false : true;
 }
 
 Git.prototype = new EventEmitter;
@@ -67,10 +69,6 @@ Git.prototype.handle = function (req, res, next) {
     && (m = u.pathname.match(/\/([^\/]+)\/info\/refs$/))) {
         var repo = m[1];
         
-        self.exists(repo, function(exists) {
-            if (!exists) self.create(repo)
-        });
-        
         if (!params.service) {
             res.statusCode = 400;
             res.end('service parameter required');
@@ -84,41 +82,47 @@ Git.prototype.handle = function (req, res, next) {
             return;
         }
         
-        res.setHeader('content-type',
-            'application/x-git-' + service + '-advertisement'
-        );
-        noCache();
+        var next = function () {
+            res.setHeader('content-type',
+                'application/x-git-' + service + '-advertisement'
+            );
+            noCache();
+            serviceRespond(service, path.join(repoDir, repo), res);
+        };
         
-        function pack (s) {
-            var n = (4 + s.length).toString(16);
-            return Array(4 - n.length + 1).join('0') + n + s;
-        }
-        res.write(pack('# service=git-' + service + '\n'));
-        res.write('0000');
-        
-        var ps = spawn('git-' + service, [
-            '--stateless-rpc',
-            '--advertise-refs',
-            path.join(repoDir, repo),
-        ]);
-        ps.stdout.pipe(res);
-        ps.stderr.pipe(process.stderr, { end : false });
+        self.exists(repo, function (exists) {
+            if (!exists && self.autoCreate) self.create(repo, next)
+            else if (!exists) {
+                res.statusCode = 404;
+                res.setHeader('content-type', 'text/plain');
+                res.end('repository not found');
+            }
+            else next()
+        });
     }
     else if (req.method === 'GET'
     && (m = u.pathname.match(/^\/([^\/]+)\/HEAD$/))) {
         var repo = m[1];
-
-        self.exists(repo, function(exists) {
-            if (!exists) self.create(repo)
-        });
         
-        var file = path.join(repoDir, repo, '.git', 'HEAD');
-        path.exists(file, function (ex) {
-            if (ex) fs.createReadStream(file).pipe(res)
-            else {
+        var next = function () {
+            var file = path.join(repoDir, repo, '.git', 'HEAD');
+            path.exists(file, function (ex) {
+                if (ex) fs.createReadStream(file).pipe(res)
+                else {
+                    res.statusCode = 404;
+                    res.end('not found');
+                }
+            });
+        }
+        
+        self.exists(repo, function(exists) {
+            if (!exists && self.autoCreate) self.create(repo, next)
+            else if (!exists) {
                 res.statusCode = 404;
-                res.end('not found');
+                res.setHeader('content-type', 'text/plain');
+                res.end('repository not found');
             }
+            else next()
         });
     }
     else if (req.method === 'POST'
@@ -162,3 +166,21 @@ Git.prototype.handle = function (req, res, next) {
         res.end('not found');
     }
 };
+
+function serviceRespond (service, file, res) {
+    function pack (s) {
+        var n = (4 + s.length).toString(16);
+        return Array(4 - n.length + 1).join('0') + n + s;
+    }
+    res.write(pack('# service=git-' + service + '\n'));
+    res.write('0000');
+    
+    var ps = spawn('git-' + service, [
+        '--stateless-rpc',
+        '--advertise-refs',
+        file
+    ]);
+    ps.stdout.pipe(res, { end : false });
+    ps.stderr.pipe(res, { end : false });
+    ps.on('exit', function () { res.end() });
+}
