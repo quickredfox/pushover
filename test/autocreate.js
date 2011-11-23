@@ -18,13 +18,12 @@ test('create, push to, and clone a repo', function (t) {
     fs.mkdirSync(srcDir, 0700);
     fs.mkdirSync(dstDir, 0700);
     
-    var repos = pushover(repoDir, { autoCreate : false });
+    var repos = pushover(repoDir);
     var port = Math.floor(Math.random() * ((1<<16) - 1e4)) + 1e4;
     var server = repos.listen(port);
     
     process.chdir(srcDir);
     seq()
-        .seq(function () { repos.create('doom', this) })
         .seq(function () {
             var ps = spawn('git', [ 'init' ]);
             ps.stderr.pipe(process.stderr, { end : false });
