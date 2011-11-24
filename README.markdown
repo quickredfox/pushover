@@ -15,7 +15,6 @@ simple.js
 var pushover = require('pushover');
 var repos = pushover(__dirname + '/repos');
 
-repos.create('beep');
 repos.on('push', function (repo) {
     console.log('received a push to ' + repo);
 });
@@ -55,14 +54,17 @@ methods
 
 var pushover = require('pushover')
 
-var repos = pushover(repoDir)
------------------------------
+var repos = pushover(repoDir, opts={autoCreate:true})
+-----------------------------------------------------
 
 Create a new repository collection from the directory `repoDir`.
 `repoDir` should be entirely empty except for git repo directories.
 
 `repos` is an EventEmitter. Right now it only emits "push" events with the repo
 name as the only argument.
+
+By default, repository targets will be created if they don't exist. You can
+disable that behavior with `opts.autoCreate`.
 
 repos.handle(req, res, next)
 ----------------------------
